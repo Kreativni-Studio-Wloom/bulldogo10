@@ -234,11 +234,11 @@ async function igRenderRightAds(peerUserId = null) {
 			const category = d.category || '';
 			const price = d.price || '';
 			
-			// TOP badge s gradientem
+			// TOP badge s oranžovo-žlutým gradientem (barvy webu)
 			const topBadge = d.isTop ? `
 				<span style="
-					background: linear-gradient(135deg, #ff8a00 0%, #e52e71 100%);
-					color: white;
+					background: linear-gradient(135deg, #f77c00 0%, #fdf002 100%);
+					color: #111827;
 					padding: 2px 8px;
 					border-radius: 12px;
 					font-size: 11px;
@@ -248,8 +248,9 @@ async function igRenderRightAds(peerUserId = null) {
 					display: inline-flex;
 					align-items: center;
 					gap: 4px;
+					box-shadow: 0 2px 8px rgba(247, 124, 0, 0.3);
 				">
-					<i class="fas fa-fire" style="font-size: 10px;"></i>
+					<i class="fas fa-fire" style="font-size: 10px; color: #f77c00;"></i>
 					TOP
 				</span>
 			` : '';
@@ -266,7 +267,7 @@ async function igRenderRightAds(peerUserId = null) {
 					border: 1px solid #e5e7eb;
 					box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 				" 
-				onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102,126,234,0.15)'; this.style.borderColor='#667eea';"
+				onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 16px rgba(247,124,0,0.25)'; this.style.borderColor='#f77c00';"
 				onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.05)'; this.style.borderColor='#e5e7eb';"
 				onclick="window.location.href='ad-detail.html?id=${encodeURIComponent(doc.id)}&userId=${encodeURIComponent(userId)}'">
 					
@@ -292,7 +293,7 @@ async function igRenderRightAds(peerUserId = null) {
 						color: #6b7280;
 						margin-bottom: 8px;
 					">
-						<i class="fas fa-map-marker-alt" style="color:#667eea; font-size:11px;"></i>
+						<i class="fas fa-map-marker-alt" style="color:#f77c00; font-size:11px;"></i>
 						<span>${location}</span>
 						${category ? `
 							<span style="color:#d1d5db;">•</span>
@@ -306,16 +307,16 @@ async function igRenderRightAds(peerUserId = null) {
 							<div style="
 								font-size: 16px;
 								font-weight: 700;
-								background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+								background: linear-gradient(135deg, #f77c00 0%, #fdf002 100%);
 								-webkit-background-clip: text;
 								-webkit-text-fill-color: transparent;
 								background-clip: text;
 							">${price}</div>
 						` : '<div></div>'}
 						<i class="fas fa-arrow-right" style="
-							color: #667eea;
+							color: #f77c00;
 							font-size: 14px;
-							opacity: 0.6;
+							opacity: 0.7;
 						"></i>
 					</div>
 				</div>
