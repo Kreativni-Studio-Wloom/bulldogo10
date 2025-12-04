@@ -96,17 +96,18 @@ function igInitUI() {
 async function igStartConversationsListener(uid) {
 	try {
 		if (!window.firebaseDb) return;
-		const { collection, query, where, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+		const { collection, query, where, onSnapshot, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
 		const chatsRef = collection(window.firebaseDb, 'chats');
 		const q = query(chatsRef, where('participants', 'array-contains', uid));
 		if (igUnsubConvs) { igUnsubConvs(); igUnsubConvs = null; }
-		igUnsubConvs = onSnapshot(q, (snap) => {
-			igConversations = snap.docs.map(d => {
+		igUnsubConvs = onSnapshot(q, async (snap) => {
+			// Nejdříve vytvoř základní seznam konverzací
+			const conversations = snap.docs.map(d => {
 				const data = d.data() || {};
 				const otherId = (data.participants || []).find(p => p !== uid) || '';
 				return {
 					id: d.id,
-					title: data.peerName || 'Konverzace',
+					title: data.peerName || 'Načítám...',
 					last: data.lastMessage || '',
 					time: data.lastAt?.toDate?.() || new Date(0),
 					avatar: data.peerAvatar || '',
@@ -114,7 +115,45 @@ async function igStartConversationsListener(uid) {
 					participants: data.participants || []
 				};
 			}).sort((a,b) => (b.time?.getTime?.()||0) - (a.time?.getTime?.()||0));
+			
+			// Zobrazit ihned se základními daty
+			igConversations = conversations;
 			igRenderConversations();
+			
+			// Načíst jména uživatelů asynchronně
+			for (let conv of conversations) {
+				if (conv.peerId) {
+					try {
+						// Zkusit načíst z profilu
+						const profileRef = doc(window.firebaseDb, 'users', conv.peerId, 'profile', 'profile');
+						const profileSnap = await getDoc(profileRef);
+						let userName = null;
+						
+						if (profileSnap.exists()) {
+							const profileData = profileSnap.data();
+							userName = profileData.name || profileData.email;
+						} else {
+							// Fallback - zkusit users dokument
+							const userRef = doc(window.firebaseDb, 'users', conv.peerId);
+							const userSnap = await getDoc(userRef);
+							if (userSnap.exists()) {
+								userName = userSnap.data().email;
+							}
+						}
+						
+						if (userName) {
+							// Aktualizovat název konverzace
+							const convIndex = igConversations.findIndex(c => c.id === conv.id);
+							if (convIndex !== -1) {
+								igConversations[convIndex].title = userName;
+								igRenderConversations();
+							}
+						}
+					} catch (e) {
+						console.warn(`⚠️ Nepodařilo se načíst jméno pro ${conv.peerId}:`, e);
+					}
+				}
+			}
 		}, (err) => console.warn('Chats listener error:', err));
 	} catch (e) {
 		console.warn('igStartConversationsListener failed', e);
