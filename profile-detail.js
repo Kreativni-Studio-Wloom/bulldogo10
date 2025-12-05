@@ -764,3 +764,116 @@ function getTimeAgo(date) {
     if (days < 365) return `Před ${Math.floor(days / 30)} měsíci`;
     return `Před ${Math.floor(days / 365)} lety`;
 }
+
+// ===== RECENZE FUNKCE =====
+
+let selectedRating = 0;
+
+// Zobrazit/skrýt formulář pro recenzi
+function toggleReviewForm() {
+    const form = document.getElementById('reviewFormSection');
+    if (form) {
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        
+        // Scroll k formuláři pokud se zobrazuje
+        if (form.style.display === 'block') {
+            form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+}
+
+// Zvýraznit hvězdičky při hover
+function highlightStars(rating) {
+    const stars = document.querySelectorAll('#reviewStars i');
+    stars.forEach((star, index) => {
+        if (index < rating) {
+            star.className = 'fas fa-star';
+            star.style.color = '#f77c00';
+        } else {
+            star.className = 'far fa-star';
+            star.style.color = '#d1d5db';
+        }
+    });
+}
+
+// Vybrat hodnocení
+function selectRating(rating) {
+    selectedRating = rating;
+    highlightStars(rating);
+    console.log('⭐ Vybráno hodnocení:', rating);
+}
+
+// Odeslat recenzi
+async function submitReview() {
+    // Zkontrolovat přihlášení
+    const currentUser = window.firebaseAuth?.currentUser;
+    if (!currentUser) {
+        alert('Pro napsání recenze se musíte přihlásit');
+        return;
+    }
+    
+    // Zkontrolovat, že uživatel nehodnotí sám sebe
+    if (!currentProfileUser || currentUser.uid === currentProfileUser.uid) {
+        alert('Nemůžete hodnotit sami sebe');
+        return;
+    }
+    
+    // Zkontrolovat hodnocení
+    if (selectedRating === 0) {
+        alert('Prosím vyberte hodnocení (1-5 hvězdiček)');
+        return;
+    }
+    
+    // Získat text recenze
+    const reviewText = document.getElementById('reviewText')?.value?.trim();
+    if (!reviewText) {
+        alert('Prosím napište text recenze');
+        return;
+    }
+    
+    try {
+        console.log('💾 Ukládám recenzi...');
+        
+        // Import Firestore funkcí
+        const { addDoc, collection, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        
+        // Uložit recenzi do Firestore
+        const reviewData = {
+            reviewerId: currentUser.uid,
+            reviewerEmail: currentUser.email,
+            rating: selectedRating,
+            text: reviewText,
+            createdAt: serverTimestamp()
+        };
+        
+        await addDoc(
+            collection(window.firebaseDb, 'users', currentProfileUser.uid, 'reviews'),
+            reviewData
+        );
+        
+        console.log('✅ Recenze uložena');
+        
+        // Zobrazit úspěšnou zprávu
+        alert('✅ Děkujeme! Vaše recenze byla úspěšně přidána.');
+        
+        // Resetovat formulář
+        selectedRating = 0;
+        document.getElementById('reviewText').value = '';
+        highlightStars(0);
+        toggleReviewForm();
+        
+        // Znovu načíst recenze
+        await loadUserReviews(currentProfileUser.uid);
+        displayUserReviews();
+        
+    } catch (error) {
+        console.error('❌ Chyba při ukládání recenze:', error);
+        alert('Nepodařilo se uložit recenzi: ' + error.message);
+    }
+}
+
+// Export funkcí pro globální použití
+window.toggleReviewForm = toggleReviewForm;
+window.highlightStars = highlightStars;
+window.selectRating = selectRating;
+window.submitReview = submitReview;
