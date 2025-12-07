@@ -176,7 +176,14 @@ function displayAdDetail() {
     
     // Title and price
     document.getElementById('adTitle').textContent = currentAd.title || 'Bez názvu';
-    document.getElementById('adPrice').textContent = currentAd.price || 'Cena na vyžádání';
+    
+    // Formátování ceny - pokud je jen číslo, přidat Kč
+    let formattedPrice = currentAd.price || '';
+    if (formattedPrice && /^\d+$/.test(formattedPrice.toString().trim())) {
+        // Pokud je cena jen číslo, přidat "Kč"
+        formattedPrice = `${formattedPrice} Kč`;
+    }
+    document.getElementById('adPrice').textContent = formattedPrice || 'Cena na vyžádání';
     
     // Meta information
     document.getElementById('adLocation').textContent = currentAd.location || 'Neznámá lokalita';
@@ -500,7 +507,15 @@ function displayOtherAds(ads) {
                         </div>
                         <div class="ad-meta-item">
                             <i class="fas fa-tag"></i>
-                            <span class="ad-price-value">${ad.price ? `${ad.price} Kč` : 'Cena na dotaz'}</span>
+                            <span class="ad-price-value">${(() => {
+                                if (!ad.price) return 'Cena na dotaz';
+                                // Pokud je cena jen číslo, přidat Kč
+                                const priceStr = ad.price.toString().trim();
+                                if (/^\d+$/.test(priceStr)) {
+                                    return `${priceStr} Kč`;
+                                }
+                                return priceStr;
+                            })()}</span>
                         </div>
                         <div class="ad-meta-item">
                             <i class="fas fa-calendar"></i>
