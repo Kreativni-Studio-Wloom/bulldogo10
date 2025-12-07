@@ -334,11 +334,17 @@
             const cur = 'Kč';
             if (priceType === 'fixed') {
                 const val = (document.getElementById('servicePrice')?.value || '').trim();
-                return val ? `${val} ${cur}/${unitText}` : '';
+                if (!val) return '';
+                // Zajistit, že číslo je správně formátované s Kč
+                const numVal = val.replace(/[^0-9]/g, ''); // Odebrat všechny nečíselné znaky
+                return numVal ? `${numVal}${cur} / ${unitText}.` : '';
             } else if (priceType === 'range') {
                 const from = (document.getElementById('servicePriceFrom')?.value || '').trim();
                 const to = (document.getElementById('servicePriceTo')?.value || '').trim();
-                return (from && to) ? `od ${from} ${cur}/${unitText} do ${to} ${cur}/${unitText}` : '';
+                if (!from || !to) return '';
+                const numFrom = from.replace(/[^0-9]/g, '');
+                const numTo = to.replace(/[^0-9]/g, '');
+                return (numFrom && numTo) ? `od ${numFrom}${cur} / ${unitText}. do ${numTo}${cur} / ${unitText}.` : '';
             }
             return 'dohodou';
         }
