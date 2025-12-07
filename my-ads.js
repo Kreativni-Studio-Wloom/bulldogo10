@@ -222,10 +222,26 @@ function createAdCard(ad) {
     
     const topStyle = ad.isTop ? 'style="border: 3px solid #ff8a00 !important; box-shadow: 0 8px 28px rgba(255, 138, 0, 0.6), 0 0 0 2px rgba(255, 138, 0, 0.4) !important;"' : '';
     
+    // Získání správné URL obrázku
+    let imageUrl = 'fotky/team.jpg'; // default fallback
+    if (ad.images && ad.images.length > 0) {
+        if (ad.images[0].url) {
+            imageUrl = ad.images[0].url;
+        } else if (typeof ad.images[0] === 'string') {
+            imageUrl = ad.images[0];
+        }
+    } else if (ad.image) {
+        if (ad.image.url) {
+            imageUrl = ad.image.url;
+        } else if (typeof ad.image === 'string') {
+            imageUrl = ad.image;
+        }
+    }
+    
     return `
         <article class="ad-card${ad.isTop ? ' is-top' : ''}" ${topStyle}>
             <div class="ad-thumb">
-                <img src="${ad.image || 'fotky/team.jpg'}" alt="Inzerát" loading="lazy" decoding="async">
+                <img src="${imageUrl}" alt="Inzerát" loading="lazy" decoding="async">
             </div>
             <div class="ad-body">
                 <h3 class="ad-title">${ad.title}</h3>
