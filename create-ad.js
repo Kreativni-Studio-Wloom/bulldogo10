@@ -331,23 +331,28 @@
         function computePriceText(){
             const priceType = document.querySelector('input[name=\"priceType\"]:checked')?.value || 'negotiable';
             const unit = (document.querySelector('input[name=\"priceUnit\"]:checked')?.value || 'hour');
-            const unitText = unit === 'hour' ? 'hod' : 'práci';
+            const unitText = unit === 'hour' ? 'hod' : ''; // Pro "práci" nebudeme zobrazovat jednotku
             const cur = 'Kč';
             if (priceType === 'fixed') {
                 const val = (document.getElementById('servicePrice')?.value || '').trim();
                 if (!val) return '';
                 // Zajistit, že číslo je správně formátované s Kč
                 const numVal = val.replace(/[^0-9]/g, ''); // Odebrat všechny nečíselné znaky
-                return numVal ? `${numVal}${cur} / ${unitText}.` : '';
+                if (!numVal) return '';
+                // Pokud je jednotka "hod", zobrazit "750 Kč/hod", jinak jen "750 Kč"
+                return unitText ? `${numVal} ${cur}/${unitText}` : `${numVal} ${cur}`;
             } else if (priceType === 'range') {
                 const from = (document.getElementById('servicePriceFrom')?.value || '').trim();
                 const to = (document.getElementById('servicePriceTo')?.value || '').trim();
                 if (!from || !to) return '';
                 const numFrom = from.replace(/[^0-9]/g, '');
                 const numTo = to.replace(/[^0-9]/g, '');
-                return (numFrom && numTo) ? `od ${numFrom}${cur} / ${unitText}. do ${numTo}${cur} / ${unitText}.` : '';
+                if (!numFrom || !numTo) return '';
+                // Pokud je jednotka "hod", zobrazit s jednotkou, jinak bez
+                const unitPart = unitText ? `/${unitText}` : '';
+                return `od ${numFrom} ${cur}${unitPart} do ${numTo} ${cur}${unitPart}`;
             }
-            return 'dohodou';
+            return 'Dohodou';
         }
     }
 })();
