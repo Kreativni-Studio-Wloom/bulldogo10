@@ -348,9 +348,9 @@
                 const numFrom = from.replace(/[^0-9]/g, '');
                 const numTo = to.replace(/[^0-9]/g, '');
                 if (!numFrom || !numTo) return '';
-                // Pokud je jednotka "hod", zobrazit s jednotkou, jinak bez
+                // Formát: "200 - 600 Kč/hod" nebo "200 - 600 Kč" (bez jednotky pro práci)
                 const unitPart = unitText ? `/${unitText}` : '';
-                return `od ${numFrom} ${cur}${unitPart} do ${numTo} ${cur}${unitPart}`;
+                return `${numFrom} - ${numTo} ${cur}${unitPart}`;
             }
             return 'Dohodou';
         }
