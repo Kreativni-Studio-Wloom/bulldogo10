@@ -84,6 +84,8 @@ async function createGoPayPayment(paymentData) {
       payerFirstName: paymentData.userFirstName,
       payerLastName: paymentData.userLastName,
       returnUrl: `${window.location.origin}/packages.html`,
+      isRecurring: paymentData.isRecurring !== undefined ? paymentData.isRecurring : true, // Pro balíčky je opakovaná platba defaultně true
+      recurrenceDateTo: paymentData.recurrenceDateTo || "2099-12-31", // Defaultně do konce roku 2099
     };
 
     // Volání Firebase Function
@@ -452,6 +454,7 @@ async function processGoPayPayment() {
       userPhone: userInfo.phone,
       userFirstName: userInfo.firstName,
       userLastName: userInfo.lastName,
+      isRecurring: true, // Balíčky jsou opakované platby (předplatné)
     });
 
     console.log("✅ Platba vytvořena, přesměrování na GoPay...");

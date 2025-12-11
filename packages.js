@@ -11,11 +11,38 @@ document.addEventListener('DOMContentLoaded', function() {
     (function waitAndLoadPlan(){
         if (window.firebaseAuth && window.firebaseDb) {
             loadCurrentPlan();
+            showManageSectionIfNeeded();
         } else {
             setTimeout(waitAndLoadPlan, 100);
         }
     })();
 });
+
+// Zobrazit sekci pro správu balíčku, pokud má uživatel aktivní balíček
+async function showManageSectionIfNeeded() {
+    try {
+        const user = window.firebaseAuth && window.firebaseAuth.currentUser;
+        if (!user || !window.firebaseDb) return;
+        
+        const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        const ref = doc(window.firebaseDb, 'users', user.uid, 'profile', 'profile');
+        const snap = await getDoc(ref);
+        
+        if (snap.exists()) {
+            const data = snap.data();
+            const plan = data.plan || 'none';
+            
+            const manageSection = document.getElementById('managePlanSection');
+            if (manageSection && plan !== 'none') {
+                manageSection.style.display = 'block';
+            } else if (manageSection) {
+                manageSection.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.error('❌ showManageSectionIfNeeded:', e);
+    }
+}
 
 function initializePackages() {
     console.log('🚀 Initializing packages');
@@ -299,20 +326,53 @@ async function loadCurrentPlan() {
         const cancelInfo = document.getElementById('cancelInfo');
         const btnCancel = document.getElementById('btnCancelPlan');
         const btnUndo = document.getElementById('btnUndoCancel');
+        const btnCancelRecurring = document.getElementById('btnCancelRecurring');
+        const recurringInfo = document.getElementById('recurringInfo');
         if (!user || !window.firebaseDb || !pPlan) return;
         const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
         const ref = doc(window.firebaseDb, 'users', user.uid, 'profile', 'profile');
         const snap = await getDoc(ref);
-        let plan = 'none', planPeriodEnd = null, planCancelAt = null;
+        let plan = 'none', planPeriodEnd = null, planCancelAt = null, isRecurring = false, recurrencePaymentId = null;
         if (snap.exists()) {
             const data = snap.data();
             plan = data.plan || 'none';
             planPeriodEnd = data.planPeriodEnd ? (data.planPeriodEnd.toDate ? data.planPeriodEnd.toDate() : new Date(data.planPeriodEnd)) : null;
             planCancelAt = data.planCancelAt ? (data.planCancelAt.toDate ? data.planCancelAt.toDate() : new Date(data.planCancelAt)) : null;
+            isRecurring = data.isRecurring || false;
+            recurrencePaymentId = data.recurrencePaymentId || null;
         }
         const planLabel = plan === 'business' ? 'Firma' : plan === 'hobby' ? 'Hobby' : 'Žádný';
         pPlan.textContent = planLabel;
         pEnd.textContent = planPeriodEnd ? planPeriodEnd.toLocaleDateString('cs-CZ') : '-';
+        
+        // Zobrazit informaci o opakované platbě
+        if (recurringInfo) {
+            if (isRecurring && recurrencePaymentId) {
+                recurringInfo.style.display = '';
+                recurringInfo.innerHTML = `
+                    <div style="padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; margin-top: 12px;">
+                        <i class="fas fa-sync-alt" style="color: #856404; margin-right: 8px;"></i>
+                        <strong>Měsíční předplatné aktivní</strong>
+                        <p style="margin: 8px 0 0 0; font-size: 14px; color: #856404;">
+                            Platba se automaticky opakuje každý měsíc. Můžete ji zrušit kdykoliv v nastavení.
+                        </p>
+                    </div>
+                `;
+            } else {
+                recurringInfo.style.display = 'none';
+            }
+        }
+        
+        // Zobrazit tlačítko pro zrušení opakované platby
+        if (btnCancelRecurring) {
+            if (isRecurring && recurrencePaymentId && !planCancelAt) {
+                btnCancelRecurring.style.display = '';
+                btnCancelRecurring.setAttribute('data-payment-id', recurrencePaymentId);
+            } else {
+                btnCancelRecurring.style.display = 'none';
+            }
+        }
+        
         if (planCancelAt) {
             cancelInfo.style.display = '';
             pCancel.textContent = planCancelAt.toLocaleDateString('cs-CZ');
@@ -362,6 +422,79 @@ async function undoCancel() {
     } catch (e) {
         console.error('❌ undoCancel:', e);
         alert('Nepodařilo se zrušit naplánované zrušení');
+    }
+}
+
+// Zrušit opakovanou platbu v GoPay
+async function cancelRecurringPayment() {
+    try {
+        const user = window.firebaseAuth && window.firebaseAuth.currentUser;
+        if (!user) {
+            alert('Musíte být přihlášeni');
+            return;
+        }
+
+        const btnCancelRecurring = document.getElementById('btnCancelRecurring');
+        const paymentId = btnCancelRecurring?.getAttribute('data-payment-id');
+        
+        if (!paymentId) {
+            alert('Nelze najít ID opakované platby');
+            return;
+        }
+
+        // Potvrzení
+        if (!confirm('Opravdu chcete zrušit měsíční předplatné? Po zrušení se již nebudou strhávat další platby.')) {
+            return;
+        }
+
+        // Získat URL Firebase Functions
+        const projectId = "inzerio-inzerce";
+        const region = "europe-west1";
+        const functionsUrl = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+            ? `http://localhost:5001/${projectId}/${region}`
+            : `https://${region}-${projectId}.cloudfunctions.net`;
+
+        // Zobrazit loading
+        if (btnCancelRecurring) {
+            btnCancelRecurring.disabled = true;
+            btnCancelRecurring.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Zrušuji...';
+        }
+
+        // Volání endpointu pro zrušení opakované platby
+        const response = await fetch(`${functionsUrl}/voidRecurrence`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                paymentId: parseInt(paymentId, 10),
+                userId: user.uid,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || errorData.error || 'Nepodařilo se zrušit opakovanou platbu');
+        }
+
+        const result = await response.json();
+        
+        alert('Měsíční předplatné bylo úspěšně zrušeno. Další platby se již nebudou strhávat.');
+        
+        // Obnovit UI
+        loadCurrentPlan();
+        showManageSectionIfNeeded();
+        
+    } catch (e) {
+        console.error('❌ cancelRecurringPayment:', e);
+        alert('Nepodařilo se zrušit opakovanou platbu: ' + e.message);
+        
+        // Obnovit tlačítko
+        const btnCancelRecurring = document.getElementById('btnCancelRecurring');
+        if (btnCancelRecurring) {
+            btnCancelRecurring.disabled = false;
+            btnCancelRecurring.innerHTML = '<i class="fas fa-times-circle"></i> Zrušit měsíční předplatné';
+        }
     }
 }
 

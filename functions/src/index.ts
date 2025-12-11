@@ -53,6 +53,13 @@ async function getGoPayAccessToken(scope = "payment-create"): Promise<string> {
   }
 }
 
+// Rozhraní pro opakovanou platbu
+interface Recurrence {
+  recurrence_cycle: "DAY" | "WEEK" | "MONTH";
+  recurrence_period: number;
+  recurrence_date_to: string; // YYYY-MM-DD
+}
+
 // Rozhraní pro platební data
 interface PaymentData {
   amount: number;
@@ -81,6 +88,7 @@ interface PaymentData {
   return_url: string;
   notification_url: string;
   lang?: string;
+  recurrence?: Recurrence;
 }
 
 // Rozhraní pro odpověď z createPayment
@@ -97,6 +105,12 @@ interface GoPayPaymentResponse {
   };
   gw_url?: string;
   result?: string;
+  recurrence?: {
+    recurrence_cycle: string;
+    recurrence_period: number;
+    recurrence_date_to: string;
+    recurrence_state?: string;
+  };
 }
 
 /**
@@ -142,6 +156,8 @@ export const createPayment = functions.https.onRequest(async (req, res) => {
         payerFirstName,
         payerLastName,
         returnUrl,
+        isRecurring = false, // Nový parametr pro opakované platby
+        recurrenceDateTo, // Datum do kdy se má opakovat (YYYY-MM-DD)
       } = req.body;
 
       // Validace povinných polí
@@ -200,6 +216,17 @@ export const createPayment = functions.https.onRequest(async (req, res) => {
         lang: "cs",
       };
 
+      // Přidat opakovanou platbu, pokud je požadována
+      if (isRecurring) {
+        // Pro balíčky nastavíme měsíční opakování
+        const dateTo = recurrenceDateTo || "2099-12-31"; // Defaultně do konce roku 2099
+        paymentData.recurrence = {
+          recurrence_cycle: "MONTH",
+          recurrence_period: 1, // Každý měsíc
+          recurrence_date_to: dateTo,
+        };
+      }
+
       // Vytvoření platby v GoPay
       const paymentResponse = await axios.post<GoPayPaymentResponse>(
         `${gopayConfig.apiUrl}/payments/payment`,
@@ -224,6 +251,8 @@ export const createPayment = functions.https.onRequest(async (req, res) => {
         amount: amount,
         currency: currency,
         state: goPayPayment.state || "CREATED",
+        isRecurring: isRecurring,
+        recurrencePaymentId: isRecurring ? goPayPayment.id : null, // ID zakládající opakované platby
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         gopayResponse: goPayPayment,
@@ -440,6 +469,10 @@ async function activateUserPlan(orderNumber: string): Promise<void> {
     const periodEnd = new Date(now.toDate());
     periodEnd.setDate(periodEnd.getDate() + durationDays);
 
+    // Získat informace o opakované platbě z payment záznamu
+    const isRecurring = paymentData.isRecurring || false;
+    const recurrencePaymentId = paymentData.recurrencePaymentId || null;
+
     await userProfileRef.set({
       plan: planId,
       planName: planName,
@@ -448,6 +481,8 @@ async function activateUserPlan(orderNumber: string): Promise<void> {
       planPeriodEnd: admin.firestore.Timestamp.fromDate(periodEnd),
       planDurationDays: durationDays,
       planCancelAt: null,
+      isRecurring: isRecurring,
+      recurrencePaymentId: recurrencePaymentId, // ID zakládající opakované platby pro zrušení
     }, { merge: true });
 
     // Označení, že plán byl aktivován
@@ -462,6 +497,105 @@ async function activateUserPlan(orderNumber: string): Promise<void> {
     throw error;
   }
 }
+
+/**
+ * Zruší opakovanou platbu v GoPay
+ * 
+ * POST /voidRecurrence
+ * Body: {
+ *   paymentId: number (GoPay payment ID zakládající opakované platby)
+ *   userId: string (pro ověření, že uživatel má oprávnění)
+ * }
+ */
+export const voidRecurrence = functions.https.onRequest(async (req, res) => {
+  return corsHandler(req, res, async () => {
+    try {
+      // Povolit pouze POST
+      if (req.method !== "POST") {
+        res.status(405).json({ error: "Method not allowed. Use POST." });
+        return;
+      }
+
+      const { paymentId, userId } = req.body;
+
+      if (!paymentId || !userId) {
+        res.status(400).json({
+          error: "Missing required fields: paymentId, userId",
+        });
+        return;
+      }
+
+      // Ověření, že uživatel má oprávnění zrušit tuto opakovanou platbu
+      const userProfileRef = admin.firestore()
+        .collection("users")
+        .doc(userId)
+        .collection("profile")
+        .doc("profile");
+
+      const userProfile = await userProfileRef.get();
+      if (!userProfile.exists) {
+        res.status(404).json({ error: "User profile not found" });
+        return;
+      }
+
+      const userData = userProfile.data();
+      if (userData?.recurrencePaymentId !== paymentId) {
+        res.status(403).json({ error: "User does not have permission to cancel this recurring payment" });
+        return;
+      }
+
+      // Získání přístupového tokenu
+      const accessToken = await getGoPayAccessToken("payment-all");
+      const gopayConfig = getGoPayConfig();
+
+      // Zrušení opakované platby v GoPay
+      const voidResponse = await axios.post(
+        `${gopayConfig.apiUrl}/payments/payment/${paymentId}/void-recurrence`,
+        null,
+        {
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Accept": "application/json",
+          },
+        }
+      );
+
+      // Aktualizace uživatelského profilu
+      await userProfileRef.update({
+        isRecurring: false,
+        recurrencePaymentId: null,
+        planCancelAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Aktualizace payment záznamu
+      const paymentsSnapshot = await admin.firestore()
+        .collection("payments")
+        .where("gopayId", "==", paymentId)
+        .limit(1)
+        .get();
+
+      if (!paymentsSnapshot.empty) {
+        await paymentsSnapshot.docs[0].ref.update({
+          recurrenceCancelled: true,
+          recurrenceCancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Recurring payment cancelled successfully",
+        result: voidResponse.data,
+      });
+    } catch (error: any) {
+      console.error("Void recurrence error:", error);
+      res.status(500).json({
+        error: "Failed to cancel recurring payment",
+        message: error.message,
+        details: error.response?.data || undefined,
+      });
+    }
+  });
+});
 
 /**
  * Pomocný endpoint pro payment return (redirect z GoPay)
